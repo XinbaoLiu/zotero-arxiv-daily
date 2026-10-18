@@ -3,7 +3,8 @@ from pyzotero import zotero
 from omegaconf import DictConfig, ListConfig
 from .utils import glob_match
 from .retriever import get_retriever_cls
-from .protocol import CorpusPaper
+from .protocol import CorpusPaper, Paper
+import re
 import random
 from datetime import datetime
 from .reranker import get_reranker_cls
@@ -27,6 +28,43 @@ def normalize_path_patterns(patterns: list[str] | ListConfig | None, config_key:
         raise TypeError(f"config.zotero.{config_key} must contain only glob pattern strings.")
 
     return list(patterns)
+
+
+def _norm_title(title: str) -> str:
+    return re.sub(r"[^a-z0-9]", "", (title or "").lower())
+
+
+def deduplicate_papers(papers: list[Paper]) -> list[Paper]:
+    """Drop duplicates across sources by DOI or normalized title.
+
+    When a journal article and a preprint describe the same paper, the journal entry is
+    kept (so the email shows the venue) but inherits the preprint's full text / abstract
+    / PDF link if it has none.
+    """
+    kept: list[Paper] = []
+    index: dict[str, int] = {}
+    removed = 0
+    for p in papers:
+        keys = [k for k in (("doi:" + p.doi.lower()) if p.doi else None, ("t:" + _norm_title(p.title)) if len(_norm_title(p.title)) > 15 else None) if k]
+        hit = next((index[k] for k in keys if k in index), None)
+        if hit is None:
+            for k in keys:
+                index[k] = len(kept)
+            kept.append(p)
+            continue
+        removed += 1
+        old = kept[hit]
+        journal, other = (p, old) if p.venue and not old.venue else (old, p)
+        if journal.full_text is None and other.full_text:
+            journal.full_text = other.full_text
+        if (not journal.abstract or journal.abstract == journal.title) and other.abstract:
+            journal.abstract = other.abstract
+        kept[hit] = journal
+        for k in keys:
+            index[k] = hit
+    if removed:
+        logger.info(f"Removed {removed} duplicated papers across sources")
+    return kept
 
 
 class Executor:
@@ -105,6 +143,7 @@ class Executor:
                 continue
             logger.info(f"Retrieved {len(papers)} {source} papers")
             all_papers.extend(papers)
+        all_papers = deduplicate_papers(all_papers)
         logger.info(f"Total {len(all_papers)} papers retrieved from all sources")
         reranked_papers = []
         if len(all_papers) > 0:

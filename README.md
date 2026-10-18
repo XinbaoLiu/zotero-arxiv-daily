@@ -45,6 +45,7 @@
   - biorxiv
   - medrxiv
   - chemrxiv
+  - journal (peer-reviewed journals via Crossref, e.g. PRL/PRB/Nature/Science/JCP; abstracts enriched via OpenAlex/nature.com/arXiv)
 
 ## 📷 Screenshot
 ![screenshot](./assets/screenshot.png)

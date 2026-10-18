@@ -14,6 +14,26 @@ source:
     category: null # The categories of target medrxiv papers. Find categories from [here](https://www.medrxiv.org/) Example: ["psychiatry and clinical psychology", "neurology"]
   chemrxiv:
     include_new_versions: false # Whether to include revised versions (v2, v3, ...) of previously posted chemrxiv preprints in addition to new first postings. chemrxiv has no category filter: all new preprints (a few dozen per day) are retrieved via Crossref and left to the reranker. Example: true
+  journal:
+    journals: # Peer-reviewed journals queried via Crossref by ISSN. Each entry needs a display name and an ISSN.
+      - {name: "Physical Review Letters", issn: "0031-9007"}
+      - {name: "Physical Review B", issn: "2469-9950"}
+      - {name: "Physical Review X", issn: "2160-3308"}
+      - {name: "PRX Quantum", issn: "2691-3399"}
+      - {name: "Nature", issn: "0028-0836"}
+      - {name: "Nature Physics", issn: "1745-2473"}
+      - {name: "Nature Materials", issn: "1476-1122"}
+      - {name: "Nature Communications", issn: "2041-1723"}
+      - {name: "Science", issn: "0036-8075"}
+      - {name: "Science Advances", issn: "2375-2548"}
+      - {name: "Journal of Chemical Theory and Computation", issn: "1549-9618"}
+      - {name: "The Journal of Chemical Physics", issn: "0021-9606"}
+    lookback_days: 1 # Number of previous whole UTC days (by Crossref created date) to fetch. 1 = yesterday only, which tiles perfectly with a daily run.
+    max_per_journal: 80 # Cap of candidates per journal per run (broad journals like Nature Communications).
+    max_total: 400 # Cap of journal candidates per run.
+    arxiv_fallback_max: 60 # Max arXiv title lookups per run for APS papers lacking an abstract (3 s each).
+    page_fallback_max: 60 # Max nature.com landing-page lookups per run for Nature-family papers lacking an abstract.
+    mailto: null # Optional contact email for Crossref/OpenAlex polite pools. Example: abc@example.com
 
 email:
   sender: ??? # The email account of the SMTP server that sends you email. Example: abc@qq.com
@@ -50,5 +70,5 @@ executor:
   debug: false # Whether to use debug mode. Example: true
   send_empty: false # Whether to send an empty email even if no new papers today. Example: true
   max_paper_num: 100 # The maximum number of the papers presented in the email. Example: 100
-  source: ??? # The sources of papers to retrieve. Example: ['arxiv','biorxiv','medrxiv','chemrxiv']
+  source: ??? # The sources of papers to retrieve. Example: ['arxiv','biorxiv','medrxiv','chemrxiv','journal']
   reranker: local # The reranker to use. Example: 'local' or 'api'

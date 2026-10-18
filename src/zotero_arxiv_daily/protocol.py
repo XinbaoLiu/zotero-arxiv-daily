@@ -48,6 +48,8 @@ class Paper:
     tldr: Optional[str] = None
     affiliations: Optional[list[str]] = None
     score: Optional[float] = None
+    venue: Optional[str] = None  # journal name for peer-reviewed sources
+    doi: Optional[str] = None
 
     def _generate_tldr_with_llm(self, openai_client:OpenAI,llm_params:dict) -> str:
         lang = llm_params.get('language', 'English')
@@ -125,12 +127,16 @@ class Paper:
     def generate_affiliations(self, openai_client:OpenAI,llm_params:dict) -> Optional[list[str]]:
         try:
             affiliations = self._generate_affiliations_with_llm(openai_client,llm_params)
+            if affiliations is None and self.affiliations:
+                # keep affiliations supplied by the source (e.g. Crossref) when no full text is available
+                return self.affiliations
             self.affiliations = affiliations
             return affiliations
         except Exception as e:
             logger.warning(f"Failed to generate affiliations of {self.url}: {e}")
-            self.affiliations = None
-            return None
+            if not self.affiliations:
+                self.affiliations = None
+            return self.affiliations
 @dataclass
 class CorpusPaper:
     title: str
