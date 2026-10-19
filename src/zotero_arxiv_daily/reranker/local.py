@@ -6,6 +6,28 @@ import time
 from loguru import logger
 from omegaconf import DictConfig, OmegaConf
 from .embedding_cache import EmbeddingCache, DEFAULT_CACHE_PATH
+def _reap_children_and_log_load() -> None:
+    """Kill leftover multiprocessing children (e.g. stuck PDF/tar extractors) and log CPU state.
+
+    Never raises: this is purely defensive/diagnostic.
+    """
+    try:
+        import multiprocessing
+        import os
+        import subprocess
+        for child in multiprocessing.active_children():
+            logger.warning(f"Killing leftover child process {child.pid} before embedding")
+            child.kill()
+            child.join(2)
+        import torch
+        load = os.getloadavg() if hasattr(os, "getloadavg") else None
+        logger.info(f"CPU count={os.cpu_count()}, torch threads={torch.get_num_threads()}, loadavg={load}")
+        top = subprocess.run(["ps", "-eo", "pid,ppid,pcpu,nlwp,comm", "--sort=-pcpu"], capture_output=True, text=True, timeout=5).stdout
+        logger.info("Top processes:\n" + "\n".join(top.splitlines()[:6]))
+    except Exception as exc:
+        logger.debug(f"Diagnostics failed: {exc}")
+
+
 @register_reranker("local")
 class LocalReranker(BaseReranker):
     def get_similarity_score(self, s1: list[str], s2: list[str]) -> np.ndarray:
@@ -23,6 +45,7 @@ class LocalReranker(BaseReranker):
             logging.getLogger("huggingface_hub.utils._http").setLevel(logging.ERROR)
             warnings.filterwarnings("ignore", category=FutureWarning)
 
+        _reap_children_and_log_load()
         encoder = SentenceTransformer(self.config.reranker.local.model, trust_remote_code=True)
         if self.config.reranker.local.encode_kwargs:
             encode_kwargs = self.config.reranker.local.encode_kwargs

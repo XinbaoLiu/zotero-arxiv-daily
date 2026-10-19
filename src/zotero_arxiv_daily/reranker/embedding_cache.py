@@ -24,6 +24,8 @@ def _text_key(prefix: str, text: str) -> str:
 
 
 class EmbeddingCache:
+    chunk_size = 128
+
     def __init__(self, path: str | None, model: str, encode_kwargs: dict | None = None):
         self.path = path or DEFAULT_CACHE_PATH
         self.prefix = model + "|" + json.dumps(encode_kwargs or {}, sort_keys=True, default=str)
@@ -54,13 +56,19 @@ class EmbeddingCache:
             self.store, missing_idx = {}, list(range(len(texts)))
         t0 = time.time()
         if missing_idx:
-            # de-duplicate identical texts before encoding
+            # de-duplicate identical texts, then encode in chunks and checkpoint after each
+            # chunk so that progress survives a slow or cancelled run.
             uniq = {}
             for i in missing_idx:
                 uniq.setdefault(keys[i], texts[i])
-            new = np.asarray(encode_fn(list(uniq.values())))
-            for k, v in zip(uniq.keys(), new):
-                self.store[k] = np.asarray(v)
+            items = list(uniq.items())
+            for c in range(0, len(items), self.chunk_size):
+                chunk = items[c : c + self.chunk_size]
+                new = np.asarray(encode_fn([t for _, t in chunk]))
+                for (k, _), v in zip(chunk, new):
+                    self.store[k] = np.asarray(v, dtype=np.float32)
+                self._save(keys, quiet=True)
+                logger.info(f"Encoded {min(c + self.chunk_size, len(items))}/{len(items)} new corpus texts ({time.time() - t0:.1f}s)")
         try:
             out = np.stack([self.store[k] for k in keys]) if keys else np.zeros((0, 0))
         except Exception as exc:  # e.g. shape mismatch between cached and new vectors
@@ -78,7 +86,7 @@ class EmbeddingCache:
         self._save(keys)
         return out
 
-    def _save(self, keep_keys: list[str]) -> None:
+    def _save(self, keep_keys: list[str], quiet: bool = False) -> None:
         try:
             keep = [k for k in dict.fromkeys(keep_keys) if k in self.store]  # prune to current corpus
             if not keep:
@@ -87,6 +95,7 @@ class EmbeddingCache:
             tmp = self.path + ".tmp.npz"
             np.savez(tmp, keys=np.array(keep), emb=np.stack([self.store[k] for k in keep]).astype(np.float32))
             os.replace(tmp, self.path)
-            logger.info(f"Saved {len(keep)} embeddings to {self.path}")
+            if not quiet:
+                logger.info(f"Saved {len(keep)} embeddings to {self.path}")
         except Exception as exc:
             logger.warning(f"Failed to save embedding cache {self.path}: {exc}")
