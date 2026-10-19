@@ -10,10 +10,11 @@ records, so abstracts are enriched with a chain of fallbacks:
 4. arXiv title search (10.1103 / APS DOIs only, capped, fuzzy title match)
 5. title only (the paper is kept so it can still be ranked/emailed)
 
-Time window: the previous ``lookback_days`` whole UTC days by Crossref ``created``
-date, i.e. ``[today-lookback_days, today)``. Because the window is aligned to UTC
-days and the workflow runs once per day, consecutive runs do not overlap and do
-not leave gaps, regardless of the exact time the cron fires.
+Time window: ``lookback_days`` whole UTC days by Crossref ``created`` date, ending at
+``floor_to_utc_day(now - cutoff_shift_hours)``. With the default shift of 12 h, any
+run between D 12:00 UTC and D+1 11:59 UTC covers ``[D-1, D)``; e.g. the 22:00 UTC
+cron on day D covers all of day D-1 even if GitHub delays the job past midnight.
+Consecutive daily runs therefore tile the calendar without gaps or duplicates.
 """
 
 import html
@@ -90,6 +91,7 @@ class JournalRetriever(BaseRetriever):
         journals = get("journals", None) or DEFAULT_JOURNALS
         self.journals = [{"name": str(j["name"]), "issn": str(j["issn"])} for j in journals]
         self.lookback_days = int(get("lookback_days", 1) or 1)
+        self.cutoff_shift_hours = float(get("cutoff_shift_hours", 12))
         self.max_per_journal = int(get("max_per_journal", 80) or 80)
         self.max_total = int(get("max_total", 400) or 400)
         self.arxiv_fallback_max = int(get("arxiv_fallback_max", 60) or 0)
@@ -116,7 +118,8 @@ class JournalRetriever(BaseRetriever):
 
     # ---------------------------------------------------------------- window
     def _window(self) -> tuple[datetime, datetime]:
-        end = datetime.now(timezone.utc).replace(hour=0, minute=0, second=0, microsecond=0)
+        anchor = datetime.now(timezone.utc) - timedelta(hours=self.cutoff_shift_hours)
+        end = anchor.replace(hour=0, minute=0, second=0, microsecond=0)
         start = end - timedelta(days=self.lookback_days)
         return start, end
 

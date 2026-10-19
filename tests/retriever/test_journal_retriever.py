@@ -12,7 +12,7 @@ from zotero_arxiv_daily.retriever import get_retriever_cls
 from zotero_arxiv_daily.retriever.journal_retriever import JournalRetriever, DEFAULT_JOURNALS
 from zotero_arxiv_daily.construct_email import render_email
 
-FIXED_NOW = datetime(2026, 10, 19, 1, 0, 0, tzinfo=timezone.utc)
+FIXED_NOW = datetime(2026, 10, 19, 22, 0, 0, tzinfo=timezone.utc)  # 22:00 UTC cron on 10-19 -> covers 10-18
 
 
 class _FixedDatetime(datetime):
@@ -40,6 +40,7 @@ CROSSREF = [
     _item("10.1103/abc2", "Erratum: Something wrong", "2026-10-18T11:00:00Z"),
     _item("10.1103/abc3", "Too old paper", "2026-10-17T23:59:00Z", abstract="<jats:p>old</jats:p>"),
     _item("10.1103/abc4", "Today paper not yet in window", "2026-10-19T00:30:00Z", abstract="x"),
+    _item("10.1103/abc7", "Same day as run", "2026-10-19T21:00:00Z", abstract="x"),
     _item("10.1103/abc5", "Correction notice", "2026-10-18T12:00:00Z", **{"update-to": [{"DOI": "10.1103/x"}]}),
     _item("10.1103/abc6", "Berry connection in nonadiabatic dynamics", "2026-10-18T13:00:00Z",
           abstract="<jats:title>Abstract</jats:title><jats:p>We study <i>Berry</i> phases.</jats:p>"),
@@ -111,3 +112,14 @@ def test_email_shows_journal():
               pdf_url="https://doi.org/x", tldr="tl", score=7.0, venue="Physical Review B")
     html = render_email([p])
     assert "Physical Review B" in html and ">DOI</a>" in html
+
+
+def test_window_robust_to_cron_delay(config, monkeypatch):
+    r = _retriever(config)
+    for now in [datetime(2026, 10, 19, 22, 0, tzinfo=timezone.utc),   # on time
+                datetime(2026, 10, 20, 3, 30, tzinfo=timezone.utc),   # delayed past midnight
+                datetime(2026, 10, 19, 12, 0, tzinfo=timezone.utc)]:  # early
+        _D = type("_D", (datetime,), {"now": classmethod(lambda cls, tz=None, _n=now: _n)})
+        monkeypatch.setattr("zotero_arxiv_daily.retriever.journal_retriever.datetime", _D)
+        start, end = r._window()
+        assert (start.date().isoformat(), end.date().isoformat()) == ("2026-10-18", "2026-10-19")

@@ -28,7 +28,8 @@ source:
       - {name: "Science Advances", issn: "2375-2548"}
       - {name: "Journal of Chemical Theory and Computation", issn: "1549-9618"}
       - {name: "The Journal of Chemical Physics", issn: "0021-9606"}
-    lookback_days: 1 # Number of previous whole UTC days (by Crossref created date) to fetch. 1 = yesterday only, which tiles perfectly with a daily run.
+    lookback_days: 1 # Number of whole UTC days (by Crossref created date) to fetch. 1 tiles perfectly with a daily run.
+    cutoff_shift_hours: 12 # The window ends at the UTC midnight preceding (now - shift). With 12, a run anywhere in [D 12:00, D+1 12:00) UTC covers day D-1, robust to cron delays.
     max_per_journal: 80 # Cap of candidates per journal per run (broad journals like Nature Communications).
     max_total: 400 # Cap of journal candidates per run.
     arxiv_fallback_max: 60 # Max arXiv title lookups per run for APS papers lacking an abstract (3 s each).
@@ -60,6 +61,7 @@ reranker:
     # The kwargs for the encode method of the local embedding model. Details see [here](https://www.sbert.net/docs/package_reference/SentenceTransformer.html#sentence_transformers.SentenceTransformer.encode)
       task: retrieval
       prompt_name: document
+    cache_path: .cache/zotero_embeddings.npz # On-disk cache of Zotero corpus embeddings (persisted by actions/cache). Set to null to disable.
   api:
     key: null # API Key of your embedding model API. Example: sk-xxx
     base_url: null # API URL of your embedding model API. Example: https://api.openai.com/v1
